@@ -10,7 +10,6 @@
   --card:#12121a;
   --accent:#7c7cff;
   --text:#eaeaf0;
-  --muted:#9aa;
   --done:#3aff8f;
 }
 
@@ -76,10 +75,7 @@ h1{margin:0;color:var(--accent)}
   outline:none;
 }
 
-.done-text{
-  text-decoration:line-through;
-  color:#8feec6;
-}
+.done-text{text-decoration:line-through;color:#8feec6}
 
 footer{
   display:flex;
@@ -129,10 +125,7 @@ const parse=t=>{
 const fmt=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 
 /* ---------- STATE ---------- */
-let data=JSON.parse(getC('dailySchedule')||'null')||[
- {start:360,dur:30,text:'',done:false,asked:false},
- {start:390,dur:30,text:'',done:false,asked:false}
-];
+let data=JSON.parse(getC('dailySchedule')||'null')||[];
 
 const grid=document.getElementById('grid');
 const save=()=>setC('dailySchedule',JSON.stringify(data));
@@ -207,9 +200,7 @@ function tick(){
     const it=data[i];
     const end=it.start+it.dur;
 
-    if(cur>=it.start && cur<end){
-      el.classList.add('current');
-    }
+    if(cur>=it.start && cur<end) el.classList.add('current');
 
     if(cur>end && !it.done && !it.asked){
       it.asked=true;
@@ -221,22 +212,31 @@ function tick(){
 setInterval(tick,30000);
 tick();
 
-/* ---------- BUTTONS ---------- */
+/* ---------- BUTTONS (FIXED) ---------- */
 add.onclick=()=>{
-  const last=data[data.length-1];
+  let start=360; // default 06:00
+  if(data.length){
+    const last=data[data.length-1];
+    start=last.start+last.dur;
+  }
+
   data.push({
-    start:last?last.start+last.dur:360,
+    start,
     dur:30,
     text:'',
     done:false,
     asked:false
   });
-  save();render();
+
+  save();
+  render();
 };
 
 clear.onclick=()=>{
   if(confirm('Clear day?')){
-    data=[];save();render();
+    data=[];
+    save();
+    render();
   }
 };
 </script>
