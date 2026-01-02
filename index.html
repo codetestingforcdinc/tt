@@ -3,264 +3,79 @@
 <head>
 <meta charset="UTF-8">
 <title>Daily Schedule</title>
-
 <style>
-:root{
-  --bg:#0b0b0f;
-  --card:#12121a;
-  --accent:#7c7cff;
-  --text:#eaeaf0;
-  --done:#3aff8f;
-}
-
+:root{--bg:#0b0b0f;--card:#12121a;--accent:#7c7cff;--text:#eaeaf0}
 *{box-sizing:border-box}
-
-body{
-  margin:0;
-  min-height:100vh;
-  background:radial-gradient(1200px 600px at 10% 0%,#111126,var(--bg));
-  color:var(--text);
-  font-family:Inter,system-ui;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-}
-
-.app{
-  width:min(900px,95vw);
-  background:linear-gradient(180deg,#141423,var(--card));
-  border-radius:18px;
-  padding:24px;
-}
-
+body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 10% 0%,#111126,var(--bg));color:var(--text);font-family:Inter,system-ui;display:flex;justify-content:center;align-items:center}
+.app{width:min(900px,95vw);background:linear-gradient(180deg,#141423,var(--card));border-radius:18px;padding:24px}
 h1{margin:0;color:var(--accent)}
-
 .list{margin-top:16px;display:flex;flex-direction:column;gap:12px}
-
-.slot{
-  background:rgba(0,0,0,.35);
-  border-radius:14px;
-  padding:14px;
-  cursor:grab;
-  transition:.2s;
-}
-
-.slot.current{
-  background:var(--accent);
-  color:#0b0b14;
-}
-
-.slot.current .time,
-.slot.current input[type=text]{
-  color:#0b0b14;
-  border-bottom-color:rgba(0,0,0,.4);
-}
-
-.slot.dragging{opacity:.4}
-
-.time{
-  font-size:.85rem;
-  color:var(--accent);
-  outline:none;
-}
-
+.slot{background:rgba(0,0,0,.35);border-radius:14px;padding:14px;cursor:grab}
+.slot.current{background:var(--accent);color:#0b0b14}
+.time{font-size:.85rem;color:var(--accent);outline:none}
+.slot.current .time{color:#0b0b14}
 .todo{display:flex;gap:8px;margin-top:8px}
-
-.todo input[type=text]{
-  flex:1;
-  background:transparent;
-  border:none;
-  border-bottom:1px dashed rgba(255,255,255,.3);
-  color:var(--text);
-  outline:none;
-}
-
-.done-text{text-decoration:line-through;color:#8feec6}
-
-footer{
-  display:flex;
-  justify-content:space-between;
-  margin-top:18px;
-}
-
-button{
-  background:linear-gradient(135deg,var(--accent),#a48bff);
-  border:none;
-  border-radius:10px;
-  padding:8px 14px;
-  font-weight:600;
-  cursor:pointer;
-}
+.todo input[type=text]{flex:1;background:transparent;border:none;border-bottom:1px dashed rgba(255,255,255,.3);color:inherit;outline:none}
+footer{display:flex;justify-content:space-between;margin-top:18px}
+button{background:linear-gradient(135deg,var(--accent),#a48bff);border:none;border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer}
 </style>
 </head>
-
 <body>
 <div class="app">
 <h1>Daily Schedule</h1>
-
 <div class="list" id="grid"></div>
-
 <footer>
-  <button id="add">Add Slot</button>
-  <button id="clear">Reset</button>
+<button id="add">Add Slot</button>
+<button id="clear">Reset</button>
 </footer>
 </div>
-
 <script>
-/* ---------- COOKIE ---------- */
-function setC(n,v,d=14){
-  const t=new Date();
-  t.setTime(t.getTime()+d*864e5);
-  document.cookie=n+'='+encodeURIComponent(v)+';expires='+t.toUTCString()+';path=/';
-}
-function getC(n){
-  return document.cookie.split('; ').find(x=>x.startsWith(n+'='))?.split('=')[1];
-}
+/* === STORAGE (FIXED) === */
+const KEY='dailySchedule_v2';
+const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+const load=()=>JSON.parse(localStorage.getItem(KEY)||'[]');
 
-/* ---------- TIME ---------- */
-const parse=t=>{
-  const m=t?.match?.(/(\\d{1,2}):(\\d{2})/);
-  return m?+m[1]*60+ +m[2]:null;
-};
+/* === TIME UTILS === */
+const parse=t=>{const m=t.match(/(\d{1,2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):null};
 const fmt=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 
-/* ---------- LOAD + MIGRATE ---------- */
-function loadData(){
-  let raw;
-  try{
-    raw=JSON.parse(getC('dailySchedule')||'[]');
-  }catch{
-    raw=[];
-  }
-
-  let start=360;
-  return raw.map((it,i)=>{
-    // Old format migration
-    if(it.time){
-      const [s,e]=it.time.split('–').map(x=>parse(x.trim()));
-      it.start=s ?? start;
-      it.dur=Math.max(5,(e??(it.start+30))-it.start);
-    }
-
-    // Hard validation
-    if(typeof it.start!=='number' || typeof it.dur!=='number'){
-      it.start=start;
-      it.dur=30;
-    }
-
-    start=it.start+it.dur;
-
-    return {
-      start:it.start,
-      dur:it.dur,
-      text:it.text||'',
-      done:!!it.done,
-      asked:!!it.asked
-    };
-  });
-}
-
-/* ---------- STATE ---------- */
-let data=loadData();
+/* === STATE === */
+let data=load();
+if(!data.length){data=[{start:360,dur:30,text:'',done:false,asked:false}]}
 const grid=document.getElementById('grid');
-const save=()=>setC('dailySchedule',JSON.stringify(data));
 
-/* ---------- CHAIN ---------- */
-function recompute(){
-  for(let i=1;i<data.length;i++){
-    data[i].start=data[i-1].start+data[i-1].dur;
-  }
-}
+function chain(){for(let i=1;i<data.length;i++)data[i].start=data[i-1].start+data[i-1].dur}
 
-/* ---------- RENDER ---------- */
+function render(){grid.innerHTML='';data.forEach((it,i)=>{
+  const el=document.createElement('div');el.className='slot';el.draggable=true;
+  const end=it.start+it.dur;
+  el.innerHTML=`<div class=time contenteditable>${fmt(it.start)} – ${fmt(end)}</div>
+  <div class=todo><input type=checkbox ${it.done?'checked':''}><input type=text value="${it.text}"></div>`;
+
+  const time=el.querySelector('.time');
+  const cb=el.querySelector('input[type=checkbox]');
+  const txt=el.querySelector('input[type=text]');
+
+  time.onblur=()=>{const p=time.textContent.split('–').map(x=>parse(x.trim()));if(p[0]!=null&&p[1]!=null){it.start=p[0];it.dur=Math.max(5,p[1]-p[0]);chain();save();render()}};
+  cb.onchange=()=>{it.done=cb.checked;save();render()};
+  txt.oninput=()=>{it.text=txt.value;save()};
+
+  el.ondragstart=()=>drag=i;
+  el.ondragover=e=>e.preventDefault();
+  el.ondrop=()=>{[data[drag],data[i]]=[data[i],data[drag]];chain();save();render()};
+
+  grid.appendChild(el);
+});tick()}
+
 let drag=null;
 
-function render(){
-  grid.innerHTML='';
-  data.forEach((it,i)=>{
-    const el=document.createElement('div');
-    el.className='slot';
-    el.draggable=true;
+function tick(){const now=new Date();const cur=now.getHours()*60+now.getMinutes();
+ document.querySelectorAll('.slot').forEach((el,i)=>{el.classList.remove('current');const it=data[i];if(cur>=it.start&&cur<it.start+it.dur)el.classList.add('current');if(cur>it.start+it.dur&&!it.done&&!it.asked){it.asked=true;if(confirm(`Completed: "${it.text||'this task'}"?`))it.done=true;save();render()}})}
 
-    const end=it.start+it.dur;
+add.onclick=()=>{const last=data[data.length-1];data.push({start:last.start+last.dur,dur:30,text:'',done:false,asked:false});save();render()};
+clear.onclick=()=>{if(confirm('Clear all?')){data=[];save();render()}};
 
-    el.innerHTML=`
-      <div class="time" contenteditable>${fmt(it.start)} – ${fmt(end)}</div>
-      <div class="todo">
-        <input type="checkbox" ${it.done?'checked':''}>
-        <input type="text" value="${it.text}">
-      </div>
-    `;
-
-    const time=el.querySelector('.time');
-    const cb=el.querySelector('input[type=checkbox]');
-    const txt=el.querySelector('input[type=text]');
-
-    if(it.done) txt.classList.add('done-text');
-
-    time.onblur=()=>{
-      const p=time.textContent.split('–').map(x=>parse(x.trim()));
-      if(p[0]!=null && p[1]!=null){
-        it.start=p[0];
-        it.dur=Math.max(5,p[1]-p[0]);
-        recompute();save();render();
-      }
-    };
-
-    cb.onchange=()=>{it.done=cb.checked;save();render()};
-    txt.oninput=()=>{it.text=txt.value;save()};
-
-    el.ondragstart=()=>{drag=i;el.classList.add('dragging')};
-    el.ondragend=()=>el.classList.remove('dragging');
-    el.ondragover=e=>e.preventDefault();
-    el.ondrop=()=>{
-      [data[drag],data[i]]=[data[i],data[drag]];
-      recompute();save();render();
-    };
-
-    grid.appendChild(el);
-  });
-}
-render();
-
-/* ---------- CURRENT + OVERDUE ---------- */
-function tick(){
-  const now=new Date();
-  const cur=now.getHours()*60+now.getMinutes();
-
-  document.querySelectorAll('.slot').forEach((el,i)=>{
-    el.classList.remove('current');
-    const it=data[i];
-    const end=it.start+it.dur;
-
-    if(cur>=it.start && cur<end) el.classList.add('current');
-
-    if(cur>end && !it.done && !it.asked){
-      it.asked=true;
-      if(confirm(`Completed: "${it.text||'this task'}"?`)) it.done=true;
-      save();render();
-    }
-  });
-}
-setInterval(tick,30000);
-tick();
-
-/* ---------- BUTTONS ---------- */
-add.onclick=()=>{
-  let start=360;
-  if(data.length){
-    const last=data[data.length-1];
-    start=last.start+last.dur;
-  }
-  data.push({start,dur:30,text:'',done:false,asked:false});
-  save();render();
-};
-
-clear.onclick=()=>{
-  if(confirm('Clear day?')){
-    data=[];save();render();
-  }
-};
+render();setInterval(tick,30000);
 </script>
 </body>
 </html>
