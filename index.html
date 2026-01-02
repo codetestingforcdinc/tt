@@ -119,14 +119,49 @@ function getC(n){
 
 /* ---------- TIME ---------- */
 const parse=t=>{
-  const m=t.match(/(\\d{1,2}):(\\d{2})/);
+  const m=t?.match?.(/(\\d{1,2}):(\\d{2})/);
   return m?+m[1]*60+ +m[2]:null;
 };
 const fmt=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 
-/* ---------- STATE ---------- */
-let data=JSON.parse(getC('dailySchedule')||'null')||[];
+/* ---------- LOAD + MIGRATE ---------- */
+function loadData(){
+  let raw;
+  try{
+    raw=JSON.parse(getC('dailySchedule')||'[]');
+  }catch{
+    raw=[];
+  }
 
+  let start=360;
+  return raw.map((it,i)=>{
+    // Old format migration
+    if(it.time){
+      const [s,e]=it.time.split('–').map(x=>parse(x.trim()));
+      it.start=s ?? start;
+      it.dur=Math.max(5,(e??(it.start+30))-it.start);
+    }
+
+    // Hard validation
+    if(typeof it.start!=='number' || typeof it.dur!=='number'){
+      it.start=start;
+      it.dur=30;
+    }
+
+    start=it.start+it.dur;
+
+    return {
+      start:it.start,
+      dur:it.dur,
+      text:it.text||'',
+      done:!!it.done,
+      asked:!!it.asked
+    };
+  });
+}
+
+/* ---------- STATE ---------- */
+let data=loadData();
 const grid=document.getElementById('grid');
 const save=()=>setC('dailySchedule',JSON.stringify(data));
 
@@ -150,9 +185,7 @@ function render(){
     const end=it.start+it.dur;
 
     el.innerHTML=`
-      <div class="time" contenteditable>
-        ${fmt(it.start)} – ${fmt(end)}
-      </div>
+      <div class="time" contenteditable>${fmt(it.start)} – ${fmt(end)}</div>
       <div class="todo">
         <input type="checkbox" ${it.done?'checked':''}>
         <input type="text" value="${it.text}">
@@ -212,31 +245,20 @@ function tick(){
 setInterval(tick,30000);
 tick();
 
-/* ---------- BUTTONS (FIXED) ---------- */
+/* ---------- BUTTONS ---------- */
 add.onclick=()=>{
-  let start=360; // default 06:00
+  let start=360;
   if(data.length){
     const last=data[data.length-1];
     start=last.start+last.dur;
   }
-
-  data.push({
-    start,
-    dur:30,
-    text:'',
-    done:false,
-    asked:false
-  });
-
-  save();
-  render();
+  data.push({start,dur:30,text:'',done:false,asked:false});
+  save();render();
 };
 
 clear.onclick=()=>{
   if(confirm('Clear day?')){
-    data=[];
-    save();
-    render();
+    data=[];save();render();
   }
 };
 </script>
